@@ -864,9 +864,20 @@
     }
   });
 
+  /**
+   * The worker's accountStatus resumes the model-list session for the tier, from its own record. A
+   * plugin upgraded from 0.4.x has that session only in /kv, and start-up skips the listing when a list
+   * was saved: hand it over (the worker keeps one it already has). Starts no agy.
+   */
+  function shareModelSession() {
+    if (!modelSessionId) return Promise.resolve();
+    return nodeCall('adoptModelSession', { params: { sessionId: modelSessionId }, timeoutMs: 10000 });
+  }
+
   // Start-up: republish with the saved model list; list from agy only when none was saved yet.
   stateLoaded
     .then(refreshLocale)
     .then(detect)
-    .then(function () { return refreshModels('if-missing'); });
+    .then(function () { return refreshModels('if-missing'); })
+    .then(shareModelSession);
 })();

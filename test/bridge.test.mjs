@@ -777,6 +777,7 @@ describe('agy-acp plugin', { concurrency: true, timeout: 20_000 }, () => {
     const state = path.join(fixture.dir, 'agy-state');
     fixture.env.FAKE_AGY_STATE = state;
     const worker = startWorker(fixture.env);
+    t.after(() => worker.close());
     let id = 0;
     const call = async (method, params) => (await worker.call({ jsonrpc: '2.0', id: ++id, method, params })).result;
     const accountStatus = (params = { harnessId: 'agy' }) => call('accountStatus', params);
@@ -799,7 +800,62 @@ describe('agy-acp plugin', { concurrency: true, timeout: 20_000 }, () => {
 
     assert.deepEqual(await call('logout', {}), { ok: true });
     assert.deepEqual(await accountStatus(), { state: 'signed-out' });
-    await worker.close();
+  });
+
+  // Why: 0.4.x kept the model-list session only in main.js's /kv, and start-up skips the listing when a
+  // list was saved; without the hand-over Cindy shows the upgraded login without its plan until models
+  // are listed again.
+  test('after an upgrade, start-up hands the saved model-list session to the worker so accountStatus reports the plan', async (t) => {
+    const fixture = makeFixture(t);
+    const state = path.join(fixture.dir, 'agy-state');
+    fs.writeFileSync(state, 'signed-in');
+    fixture.env.FAKE_AGY_STATE = state;
+    const worker = startWorker(fixture.env);
+    t.after(() => worker.close());
+    let id = 0;
+    const call = async (method, params) => (await worker.call({ jsonrpc: '2.0', id: ++id, method, params })).result;
+    const sent = (method) => (fs.existsSync(state + '.log')
+      ? fs.readFileSync(state + '.log', 'utf8').trim().split('\n').filter((line) => line === method).length
+      : 0);
+    // Before main.js starts, the worker has no session of its own to read the tier from.
+    assert.deepEqual(await call('accountStatus', { harnessId: 'agy' }), { state: 'signed-in' });
+
+    const answered = [];
+    class Channel { constructor() { this.onmessage = null; } postMessage() {} }
+    const context = vm.createContext({
+      BroadcastChannel: Channel,
+      setTimeout,
+      clearTimeout,
+      cindy: {
+        request: async () => ({ ok: true, context: { locale: 'en', uiLocale: 'en' } }),
+        node: {
+          request: async (request) => {
+            const result = await call(request.method, JSON.parse(JSON.stringify(request.params || {})));
+            answered.push(request.method);
+            return { ok: true, result };
+          },
+        },
+        onHostMessage: () => () => {},
+      },
+      fetch: async (url, init) => {
+        if (url === '/kv' && !init) {
+          return { ok: true, json: async () => ({ models: [{ id: 'fake-model', name: 'Fake' }], modelsListedAt: Date.now(),
+            modelSessionId: 'saved-session' }) };
+        }
+        return { ok: true, status: 204 };
+      },
+    });
+    vm.runInContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), context, { filename: 'main.js' });
+    await waitFor(() => answered.includes('adoptModelSession'), 8_000, 'saved session handed to the worker');
+    assert.ok(!answered.includes('listModels'), 'start-up with a saved list does not list models');
+
+    const opened = sent('session/new');
+    const resumed = sent('session/resume');
+    assert.deepEqual(await call('accountStatus', { harnessId: 'agy' }), { state: 'signed-in', plan: 'Google AI Pro' });
+    assert.equal(sent('session/new'), opened, 'no agy session was opened');
+    assert.equal(sent('session/resume'), resumed + 1);
+    // A session the worker already remembers is kept.
+    assert.deepEqual(await call('adoptModelSession', { sessionId: 'older-session' }), { ok: true, adopted: false });
   });
 
   test('accountStatus answers null instead of guessing when agy is missing or the check fails', async (t) => {
@@ -809,16 +865,16 @@ describe('agy-acp plugin', { concurrency: true, timeout: 20_000 }, () => {
     }
     const request = { jsonrpc: '2.0', id: 1, method: 'accountStatus', params: { harnessId: 'agy' } };
     const missing = startWorker(makeFixture(t, { withAgy: false }).env);
+    t.after(() => missing.close());
     assert.equal((await missing.call(request)).result, null);
-    await missing.close();
 
     const crashing = makeFixture(t, { extraEnv: { FAKE_AGY_CRASH: '1' } });
     crashing.env.FAKE_AGY_STATE = path.join(crashing.dir, 'agy-state');
     const worker = startWorker(crashing.env);
+    t.after(() => worker.close());
     assert.equal((await worker.call(request)).result, null);
     // The settings page still sees the failure itself.
     assert.equal((await worker.call({ jsonrpc: '2.0', id: 2, method: 'account', params: {} })).result.error, 'status-failed');
-    await worker.close();
   });
 
   // 登录前就开始读取模型时，它晚于登录返回的「未登录」不能把引擎改回未登录。

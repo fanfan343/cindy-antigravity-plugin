@@ -24,6 +24,10 @@
  *     its tier name as `plan`, read like `account` with the dedicated model-list session the last
  *     listModels used. null when agy is missing, the check fails or takes longer than 20 s, and for
  *     an `accountDir` (the plugin never offers to add accounts).
+ *   adoptModelSession({ sessionId }) -> { ok: true, adopted } | { ok: false, error: 'invalid' | 'busy' }
+ *     main.js hands over the model-list session it saved, so accountStatus can read the tier before
+ *     the next listing (plugins upgraded from 0.4.x kept it only in main.js). Kept only when the worker
+ *     remembers none; starts no agy.
  *   usage({ harnessId }) -> { updatedAt, windows } | null   (agy's native /usage, see agy-usage.js)
  *   login() -> { ok: true, tier? } | { ok: false, error, detail? }
  *     agy's Google sign-in: agy opens the browser; answers when the sign-in finished, was cancelled
@@ -185,6 +189,15 @@ const handlers = {
       error: 'list-failed',
       detail: String((error && error.message) || error).slice(0, 300),
     }));
+  },
+  adoptModelSession(params) {
+    const sessionId = params && params.sessionId;
+    if (typeof sessionId !== 'string' || !sessionId) return { ok: false, error: 'invalid' };
+    // The saved session belongs to the executable being replaced.
+    if (customPathPending > 0) return { ok: false, error: 'busy' };
+    if (readModelSession()) return { ok: true, adopted: false };
+    rememberModelSession(sessionId);
+    return { ok: true, adopted: readModelSession() === sessionId };
   },
 };
 
