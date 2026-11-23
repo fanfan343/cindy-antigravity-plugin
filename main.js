@@ -222,7 +222,12 @@
   /** Only metadata leaves the plugin: never the executable path or a command. */
   function harnessEntry(result) {
     var entry = { id: HARNESS_ID, available: result.available === true && !signInRequired };
-    if (entry.available) entry.reportsUsage = true;
+    if (entry.available) {
+      entry.reportsUsage = true;
+      // Cindy may show agy's one login (worker `accountStatus`). No sign-in methods: agy keeps a single
+      // Google sign-in per computer, so Cindy cannot add Antigravity accounts. Older Cindy drops the field.
+      entry.accounts = { methods: [] };
+    }
     if (entry.available && supportsRemoteWorkspace(result.version)) {
       entry.remoteWorkspace = true;
       entry.guestWorkspace = true;

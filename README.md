@@ -23,7 +23,7 @@
 
 ## 账号用量
 
-设置页显示当前 Google 账号各模型组的剩余额度和重置时间。数据来自本机 agy 的原生 `/usage` 命令，查询不会发起模型对话。支持插件用量的 Cindy 也会在使用此引擎的任务输入框下方显示用量，点击可看明细。旁边的圆环显示当前任务由引擎上报的上下文占用。
+设置页显示当前 Google 账号各模型组的剩余额度和重置时间。数据来自本机 agy 的原生 `/usage` 命令，查询不会发起模型对话。支持插件用量的 Cindy 也会在使用此引擎的任务输入框下方显示用量，点击可看明细。旁边的圆环显示当前任务由引擎上报的上下文占用。额度周期能明确识别时（如 `5h`、`weekly`），用量里会一并带上窗口时长（`windowMinutes`），供 Cindy 判断哪份额度更快重置；认不出的周期不带。
 
 ## 让自己的其他电脑使用与分享给朋友
 
@@ -90,6 +90,9 @@ agy --settings {"useG1Credits":false} acp --disable-telemetry
 - 工作模式：`mode` 配置项（default / accept-edits / auto / plan）按 Cindy 权限档 id 上报。输入框的权限菜单
   列出这些模式，末尾是 Cindy 的「全部允许」；切换时 Cindy 让 agy 切到对应模式，agy 请求权限时仍由你确认。
 
+探测会话的 id 由逻辑页存在插件数据里，Node 工作进程另记一份在本机配置目录的 `cindy-agy-acp/model-session.json`
+（只有这个 id），供查询登录状态时复用同一个会话读取订阅档位。
+
 打开模型选择器时 Cindy 会请插件刷新（同一插件 10 分钟内最多一次）。agy 没有登录时，引擎显示为不可用，
 提示到插件设置页登录。
 
@@ -106,11 +109,17 @@ agy --settings {"useG1Credits":false} acp --disable-telemetry
 
 登录信息由 agy 保存在它自己的存储里（Windows 上是系统凭据管理器），插件与 Cindy 都不保存。
 
+支持引擎账号的 Cindy 会在 Antigravity 引擎下显示当前登录的订阅档位（例如 Google AI Ultra）。插件只上报
+这一个登录（`accountStatus`：是否已登录与订阅档位，读法同上面的「状态」，复用模型探测会话，不新建会话），同样不含
+邮箱。**不支持在 Cindy 里添加多个 Antigravity 账号**：agy 把 Google 登录存在系统凭据存储的固定位置，一台电脑只有
+一个登录，换 HOME 等目录也还是同一个账号（agy 1.5.14 实测），agy 本身也不支持多个 Google 账号。要换账号，请在
+设置页退出后用另一个 Google 账号登录。
+
 | 文件 | 作用 |
 | --- | --- |
 | `ghost.json` | 清单：`node` 工作进程、额外入口 `agy-acp.js`、`harnesses` 声明、设置页、常驻逻辑页 |
 | `main.js` | 逻辑页：检测 agy、读取模型与模式，`PUT /harnesses` 发布可用状态 |
-| `worker.js` | Node 工作进程（json-rpc-stdio），提供 `detect`、`setCustomPath`、`listModels`、`account`、`login`、`cancelLogin`、`logout` |
+| `worker.js` | Node 工作进程（json-rpc-stdio），提供 `detect`、`setCustomPath`、`listModels`、`account`、`accountStatus`、`login`、`cancelLogin`、`logout`、`usage` |
 | `resolve-agy.js` | 查找与启动 agy 的共用代码（worker 与 ACP 入口用同一套自定义路径、查找顺序与参数） |
 | `agy-client.js` | 插件自用的短时 ACP 连接（启动 agy、`initialize`、调用、停止） |
 | `agy-models.js` | 经 ACP 读取模型、每个模型的思考深度、agy 的工作模式与订阅档位 |
