@@ -1434,8 +1434,13 @@ describe('agy-acp plugin', { concurrency: true, timeout: 20_000 }, () => {
     assert.equal(element('custom-path-reset').hidden, false);
 
     // Reset sends empty path and restores auto-detection.
+    const checksBeforeReset = cliActions.filter((a) => a === 'check').length;
     element('custom-path-reset').click();
     await waitFor(() => element('version').textContent === '1.5.9', 3_000, 'reset to auto-detect');
+    // The path change runs a fresh CLI check; let its reply land first, or it can overwrite the
+    // update state injected below and unlock the path again (seen on Windows under parallel load).
+    await waitFor(() => cliActions.filter((a) => a === 'check').length > checksBeforeReset, 3_000, 'CLI update check re-ran after reset');
+    await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(element('custom-path-reset').hidden, true);
     assert.deepEqual(savedPaths, ['bad', '/opt/custom/agy', '/gone/agy', '']);
 
