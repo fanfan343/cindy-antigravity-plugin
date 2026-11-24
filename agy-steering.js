@@ -120,12 +120,15 @@ function attachSteering(input, output, child, stop) {
     if (message.method === 'initialize') initializeId = message.id;
     if (isAntigravity && isSessionOpen(message.method)) {
       let effective = params;
-      if (enabled()) {
-        const trimmed = trimSessionServers(params);
-        const notice = describeTrim(trimmed);
-        if (notice) process.stderr.write(notice + '\n');
-        if (trimmed) effective = trimmed.params;
-      }
+      try {
+        if (enabled()) {
+          const trimmed = trimSessionServers(params);
+          const notice = describeTrim(trimmed);
+          // A closed stderr pipe must never take the session down with it.
+          if (notice) { try { process.stderr.write(notice + '\n'); } catch { /* ignore */ } }
+          if (trimmed) effective = trimmed.params;
+        }
+      } catch { /* never block a session on the trim */ }
       const servers = Array.isArray(effective?.mcpServers) ? effective.mcpServers : [];
       const serverNames = servers.map((server) => server?.name).filter((name) => typeof name === 'string' && name);
       openingSessions.set(message.id, { sessionId: effective?.sessionId, serverNames, seen: new Map() });
