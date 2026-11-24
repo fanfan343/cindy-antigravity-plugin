@@ -3,6 +3,7 @@
 const { Transform } = require('node:stream');
 const { StringDecoder } = require('node:string_decoder');
 const { completeInitializeResult, isObject, isSessionOpen, normalizeMcpToolCall } = require('./agy-mcp.js');
+const { describeTrim, enabled, trimSessionServers } = require('./agy-toolbudget.js');
 
 function lineTransform(handle) {
   const decoder = new StringDecoder('utf8');
@@ -118,9 +119,17 @@ function attachSteering(input, output, child, stop) {
     const params = message.params;
     if (message.method === 'initialize') initializeId = message.id;
     if (isAntigravity && isSessionOpen(message.method)) {
-      const servers = Array.isArray(params?.mcpServers) ? params.mcpServers : [];
+      let effective = params;
+      if (enabled()) {
+        const trimmed = trimSessionServers(params);
+        const notice = describeTrim(trimmed);
+        if (notice) process.stderr.write(notice + '\n');
+        if (trimmed) effective = trimmed.params;
+      }
+      const servers = Array.isArray(effective?.mcpServers) ? effective.mcpServers : [];
       const serverNames = servers.map((server) => server?.name).filter((name) => typeof name === 'string' && name);
-      openingSessions.set(message.id, { sessionId: params?.sessionId, serverNames, seen: new Map() });
+      openingSessions.set(message.id, { sessionId: effective?.sessionId, serverNames, seen: new Map() });
+      if (effective !== params) return encode({ ...message, params: effective });
     }
     if (!offered) return line;
     if (message.method === 'session/prompt' && typeof params?.sessionId === 'string' && !turns.has(params.sessionId)) {

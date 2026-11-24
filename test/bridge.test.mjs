@@ -2314,20 +2314,22 @@ describe('Antigravity local ACP relay', () => {
         type: 'http', name, url: `http://127.0.0.1:4711/mcp/${name}`, headers: [{ name: 'Authorization', value: 'Bearer test-token' }],
       }));
       request(2, method, { mcpServers });
-      assert.deepEqual(server.at(-1).params.mcpServers, mcpServers);
+      // Antigravity drops MCP tools that do not fit its size budget, so the relay
+      // narrows the server list down to the gateway server before agy sees it.
+      assert.deepEqual(server.at(-1).params.mcpServers, [mcpServers[0]]);
 
       const rawInput = { category: 'control' };
       const nested = method === 'session/resume';
       const reportedInput = nested
-        ? { ServerName: 'cindy_helper', ToolName: 'list_tools', Arguments: JSON.stringify(rawInput) }
+        ? { ServerName: 'cindy', ToolName: 'list_tools', Arguments: JSON.stringify(rawInput) }
         : { ...rawInput, toolSummary: 'List tools' };
       const call = {
         toolCallId: 'mcp-1',
-        name: nested ? 'call_mcp_tool' : 'mcp_cindy_helper_list_tools',
-        title: nested ? 'MCP Tool List Tools' : 'Run mcp_cindy_helper_list_tools',
+        name: nested ? 'call_mcp_tool' : 'mcp_cindy_list_tools',
+        title: nested ? 'MCP Tool List Tools' : 'Run mcp_cindy_list_tools',
         kind: nested ? 'execute' : 'other',
       };
-      const canonical = { ...call, name: 'mcp__cindy_helper__list_tools', title: 'mcp__cindy_helper__list_tools', kind: 'other', rawInput };
+      const canonical = { ...call, name: 'mcp__cindy__list_tools', title: 'mcp__cindy__list_tools', kind: 'other', rawInput };
       const update = (fields) => send({ method: 'session/update', params: { sessionId: 'one', update: fields } });
       const options = [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }];
       const permission = (toolCall) => send({
