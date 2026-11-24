@@ -20,6 +20,7 @@
  */
 
 const os = require('node:os');
+const { recordLaunch } = require('./agy-launchlog.js');
 const { attachSteering } = require('./agy-steering.js');
 const { ACP_ARGS, detectAgy, readCustomAgyConfig, resolveAgy, spawnAgy, killTree } = require('./resolve-agy.js');
 const remoteWorkspace = require('./remote-workspace.js');
@@ -212,6 +213,13 @@ async function runRemoteWorkspace() {
     timings: { stdinEndGrace: STDIN_END_GRACE_MS, signalGrace: SIGNAL_GRACE_MS, flush: FLUSH_TIMEOUT_MS },
   });
 }
+
+// Reaching this line means Cindy did start the engine; a task that fails with no
+// marker here failed before the agent, which is the host's side of the line.
+recordLaunch({
+  remote: remoteWorkspace.isRemoteWorkspaceLaunch(process.argv),
+  argv: process.argv.slice(2),
+});
 
 if (remoteWorkspace.isRemoteWorkspaceLaunch(process.argv)) {
   runRemoteWorkspace();
